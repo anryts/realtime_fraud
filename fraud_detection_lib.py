@@ -136,18 +136,11 @@ class FraudDetectionLib:
         return result_df
     
     def train_isolation_forest(self, data: DataFrame) -> None:
-        features = data.columns[:-1]
-        assembler = VectorAssembler(inputCols=features, outputCol="features")
-        assembled_data = assembler.transform(data)
-
-        scaler = MinMaxScaler(inputCol="features", outputCol="scaled_features")
-        scaler_model = scaler.fit(assembled_data)
-        normalized_features = scaler_model.transform(assembled_data)
-
+        normalized_features = self.prepare_data(data)
         normalized_features_pd = normalized_features.select("scaled_features").toPandas()
         normalized_features_np = np.array(normalized_features_pd["scaled_features"].tolist())
 
-        iso_forest = IsolationForest(contamination=0.01, random_state=3345)
+        iso_forest = IsolationForest(contamination=0.01, random_state=3345, n_estimators=100)
         iso_forest.fit(normalized_features_np)
         predictions = iso_forest.predict(normalized_features_np)
 
@@ -156,8 +149,9 @@ class FraudDetectionLib:
         balanced_df_pd['is_anomaly'] = (predictions == -1).astype(int)
 
         # Simple validation: count of Class == 1 and is_anomaly == 1
-        validation_count = balanced_df_pd[(balanced_df_pd['Class'] == 1) & (balanced_df_pd['is_anomaly'] == 1)].shape[0]
-        print(f"Validation count (Class == 1 and is_anomaly == 1): {validation_count}")
+        print(f"Anomalies: {balanced_df_pd['is_anomaly'].value_counts()}")
+        print(f"Class: {balanced_df_pd['Class'].value_counts()}")
+        self.isolation_forest_model = iso_forest
 
     def isolate_forest_detection(self, data: DataFrame) -> pd.DataFrame:
         """
@@ -165,21 +159,15 @@ class FraudDetectionLib:
         Returns:
             anomalies (pandas.Series): 1 for anomaly, 0 otherwise
         """
-        
-        features = data.columns[:-1]
-        assembler = VectorAssembler(inputCols=features, outputCol="features")
-        assembled_data = assembler.transform(data)
-
-        scaler = MinMaxScaler(inputCol="features", outputCol="scaled_features")
-        scaler_model = scaler.fit(assembled_data)
-        normalized_features = scaler_model.transform(assembled_data)
-
-        normalized_features_pd = normalized_features.select("scaled_features").toPandas()
+        proccesed_data = self.prepare_data(data)
+        normalized_features_pd = proccesed_data.select("scaled_features").toPandas()
         normalized_features_np = np.array(normalized_features_pd["scaled_features"].tolist())
-
-        anomalies = self.isolation_forest_model.predict(normalized_features_np)
+        model = IsolationForest(contamination=0.01, random_state=3345, n_estimators=100)
+        model.fit(normalized_features_np)
+        anomalies = model.predict(normalized_features_np)
+        #anomalies = self.isolation_forest_model.predict(normalized_features_np)
         result_df = data.toPandas()
-        result_df['is_anomaly'] = (anomalies == -1).astype(int)
+        result_df['is_anomaly'] = pd.Series(anomalies).apply(lambda x: 1 if x == -1 else 0)
         #print results by is anomaly and class
         print(f"Anomalies: {result_df['is_anomaly'].value_counts()}")
         print(f"Class: {result_df['Class'].value_counts()}")

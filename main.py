@@ -16,8 +16,8 @@ spark = SparkSession.builder \
 file_path = "file:///opt/spark/data/creditcard.csv"
 data = spark.read.csv(file_path, header=True, inferSchema=True)
 fraud_detection_lib = FraudDetectionLib()
-fraud_detection_lib.calculate_iqr_bounds(data, ["Amount", "V11", "V4", "V2"])
-fraud_detection_lib.train_classification_model(data)
+#fraud_detection_lib.calculate_iqr_bounds(data, ["Amount", "V11", "V4", "V2"])
+#fraud_detection_lib.train_classification_model(data)
 fraud_detection_lib.train_isolation_forest(data)
 
 #Initialise the InfluxDB client
@@ -52,12 +52,12 @@ def process_batch(df, epoch_id):
     # Make inferences with diff approaches
 
     # IQR
-    iqr_anomalies = fraud_detection_lib.iqr_detection(df, ["Amount", "V11", "V4", "V2"])
-    influxdb_client.write_to_influxdb(iqr_anomalies, "IQR")
+    #iqr_anomalies = fraud_detection_lib.iqr_detection(df, ["Amount", "V11", "V4", "V2"])
+    #influxdb_client.write_to_influxdb(iqr_anomalies, "IQR")
 
     # Random Forest
-    rf_anomalies = fraud_detection_lib.random_forest_detection(prepared_data)
-    influxdb_client.write_to_influxdb(rf_anomalies, "RandomForest")
+    #rf_anomalies = fraud_detection_lib.random_forest_detection(prepared_data)
+    #influxdb_client.write_to_influxdb(rf_anomalies, "RandomForest")
 
     # Isolation Forest from sci-kit learn
     iso_forest_anomalies = fraud_detection_lib.isolate_forest_detection(df)
