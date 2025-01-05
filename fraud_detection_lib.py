@@ -133,6 +133,7 @@ class FraudDetectionLib:
         # Convert to Pandas DataFrame and add 'is_anomaly' column
         result_df = predictions.toPandas()
         result_df['is_anomaly'] = result_df['prediction'].astype(int)
+        print(f"Accuracy: {result_df['is_anomaly'].value_counts()}")
         return result_df
     
     def train_isolation_forest(self, data: DataFrame) -> None:

@@ -1,6 +1,7 @@
 from pyspark.sql import SparkSession
 from pyspark.ml.feature import VectorAssembler, MinMaxScaler, StringIndexer
 from fraud_detection_lib import FraudDetectionLib
+from pyspark.sql.functions import col
 from my_influxdb_client import InfluxDbClient
 
 # Create a SparkSession
@@ -56,7 +57,7 @@ def process_batch(df, epoch_id):
     #influxdb_client.write_to_influxdb(iqr_anomalies, "IQR")
 
     # Random Forest
-    #rf_anomalies = fraud_detection_lib.random_forest_detection(prepared_data)
+    rf_anomalies = fraud_detection_lib.random_forest_detection(prepared_data)
     #influxdb_client.write_to_influxdb(rf_anomalies, "RandomForest")
 
     # Isolation Forest from sci-kit learn
@@ -64,12 +65,28 @@ def process_batch(df, epoch_id):
     #influxdb_client.write_to_influxdb(iso_forest_anomalies, "IsolationForest")
 
     # Combined IQR and RandomForest
-    combined_anomalies = fraud_detection_lib.iqr_plus_random_forest_detection(df, ["Amount", "V11", "V4", "V2"])
+    #combined_anomalies = fraud_detection_lib.iqr_plus_random_forest_detection(df, ["Amount", "V11", "V4", "V2"])
+
+
+def process_batch_with_data_drift(df, epoch_id):
+    '''
+    A method to process the batch with data drift detection
+    ONLY FOR TEST
+    '''
+    print(f"current batch: {epoch_id}")
+    # Simulate data drift after 20 batches
+    if epoch_id > 20:
+        drift_koef = 1.3  # Define your drift coefficient
+        df = df.withColumn("Amount", col("Amount") * drift_koef)
+        df = df.withColumn("V11", col("V11") * drift_koef)
+        df = df.withColumn("V4", col("V4") * drift_koef)
+        df = df.withColumn("V2", col("V2") * drift_koef)
+    
+    process_batch(df, epoch_id)
 
 query = stream_data.writeStream \
     .foreachBatch(process_batch) \
     .outputMode("append") \
-    .trigger(processingTime="5 seconds") \
     .start()
 
 query.awaitTermination()
