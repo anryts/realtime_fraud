@@ -37,9 +37,9 @@ class FraudDetectionLib:
             upper_bound = Q3 + 1.5 * IQR
             self.iqr_bounds[feature] = (lower_bound, upper_bound)
 
-    def iqr_detection(self, data: DataFrame, features: list) -> pd.DataFrame:
+    def iqr_detection(self, data: DataFrame, features: list) -> DataFrame:
         """
-        Detect anomalies using the Interquartile Range (IQR) method.
+        Detect anomalies using the Interquartile Range (IQR)    method.
        
         :param data: Input Spark DataFrame.
         :param features: List of feature names to analyze for outliers.
@@ -59,9 +59,9 @@ class FraudDetectionLib:
         df_with_anomalies = data.withColumn("is_anomaly", combined_outliers.cast("int"))
 
         # Convert to Pandas DataFrame
-        result_df = df_with_anomalies.toPandas() # problem, shape is 1000, 32 need to convert to just 1 column
+        #result_df = df_with_anomalies.toPandas() # problem, shape is 1000, 32 need to convert to just 1 column
 
-        return result_df
+        return df_with_anomalies
     
     def zscore_detection(data, feature, threshold = 3):
         """
@@ -162,8 +162,9 @@ class FraudDetectionLib:
         proccesed_data = self.prepare_data(data)
         normalized_features_pd = proccesed_data.select("scaled_features").toPandas()
         normalized_features_np = np.array(normalized_features_pd["scaled_features"].tolist())
-        model = IsolationForest(contamination=0.01, random_state=3345, n_estimators=100)
-        model.fit(normalized_features_np)
+        #model = IsolationForest(contamination=0.01, random_state=3345, n_estimators=100)
+        model = self.isolation_forest_model
+        #model.fit(normalized_features_np)
         anomalies = model.predict(normalized_features_np)
         #anomalies = self.isolation_forest_model.predict(normalized_features_np)
         result_df = data.toPandas()
@@ -172,3 +173,16 @@ class FraudDetectionLib:
         print(f"Anomalies: {result_df['is_anomaly'].value_counts()}")
         print(f"Class: {result_df['Class'].value_counts()}")
         return result_df
+    
+    def iqr_plus_random_forest_detection(self, data: DataFrame, features: list) -> pd.DataFrame:
+        """
+        Detect anomalies using the IQR and then check with Random Forest.
+        Returns:
+            anomalies (pandas.Series): 1 for anomaly, 0 otherwise
+        """
+        # Step 1: IQR Detection
+        iqr_anomalies = self.iqr_detection(data, features)
+        
+        outliers = iqr_anomalies[iqr_anomalies['is_anomaly'] == 1]
+
+        return self.random_forest_detection(self.prepare_data(outliers))
