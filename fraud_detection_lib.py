@@ -7,6 +7,7 @@ from pyspark.sql import DataFrame
 from sklearn.ensemble import IsolationForest
 import pandas as pd
 import numpy as np
+import file_generation as fg
 
 class FraudDetectionLib: 
     """
@@ -37,7 +38,7 @@ class FraudDetectionLib:
             upper_bound = Q3 + 1.5 * IQR
             self.iqr_bounds[feature] = (lower_bound, upper_bound)
 
-    def iqr_detection(self, data: DataFrame, features: list) -> DataFrame:
+    def iqr_detection(self, data: DataFrame, features: list) -> pd.DataFrame:
         """
         Detect anomalies using the Interquartile Range (IQR)    method.
        
@@ -61,7 +62,7 @@ class FraudDetectionLib:
         # Convert to Pandas DataFrame
         #result_df = df_with_anomalies.toPandas() # problem, shape is 1000, 32 need to convert to just 1 column
 
-        return df_with_anomalies
+        return df_with_anomalies.toPandas()
     
     def zscore_detection(data, feature, threshold = 3):
         """
@@ -92,7 +93,7 @@ class FraudDetectionLib:
 
     def prepare_data(self, data: DataFrame) -> DataFrame:
         # Define the feature columns (excluding 'Class' and 'time')
-        balanced_df = data #self.oversample_data(data)
+        balanced_df = self.oversample_data(data)
         feature_columns = [col for col in balanced_df.columns if col not in ['Class', 'Time']]
 
         # VectorAssembler to combine features into a single feature vector
@@ -103,12 +104,22 @@ class FraudDetectionLib:
         scaled_data = scaler.fit(assembled_data).transform(assembled_data)
         return scaled_data      
 
-    def train_classification_model(self, data: DataFrame):
+    def train_classification_model_with_data_drift(self, data: DataFrame) -> None:
+        '''
+        Train a Random Forest classifier on the data with data drift.
+        Just wrapper around train_classification_model with data oversampling
+        '''
+        data = self.oversample_data(data)
+        #fg.StreamDataGenerator().generate_files(data)
+        self.train_classification_model(data)
+
+
+    def train_classification_model(self, data: DataFrame) -> None:
         # Split the data into training and test sets
         data = self.prepare_data(data)
         train_data, test_data = data.randomSplit([0.8, 0.2], seed=3445)
         # Train a Random Forest classifier
-        rf = RandomForestClassifier(featuresCol="scaled_features", labelCol="Class", numTrees=30)
+        rf = RandomForestClassifier(featuresCol="scaled_features", labelCol="Class", numTrees=20, maxDepth=20, maxBins=32)
         self.classification_model = rf.fit(train_data)
 
         # Evaluate the model
@@ -128,13 +139,12 @@ class FraudDetectionLib:
             anomalies (pandas.Series): 1 for anomaly, 0 otherwise
         """
         # Prepare the data
+        #data = self.prepare_data(data)
         predictions = self.classification_model.transform(data)
         
-        # Convert to Pandas DataFrame and add 'is_anomaly' column
-        result_df = predictions.toPandas()
-        result_df['is_anomaly'] = result_df['prediction'].astype(int)
-        print(f"Accuracy: {result_df['is_anomaly'].value_counts()}")
-        return result_df
+        predictions = predictions.withColumn("is_anomaly", col("prediction").cast("int"))
+        
+        return predictions.toPandas()
     
     def train_isolation_forest(self, data: DataFrame) -> None:
         normalized_features = self.prepare_data(data)
@@ -146,12 +156,12 @@ class FraudDetectionLib:
         predictions = iso_forest.predict(normalized_features_np)
 
         # Convert predictions to binary: 0 for inliers, 1 for outliers
-        balanced_df_pd = data.toPandas()
-        balanced_df_pd['is_anomaly'] = (predictions == -1).astype(int)
+        #balanced_df_pd = data.toPandas()
+        #balanced_df_pd['is_anomaly'] = (predictions == -1).astype(int)
 
         # Simple validation: count of Class == 1 and is_anomaly == 1
-        print(f"Anomalies: {balanced_df_pd['is_anomaly'].value_counts()}")
-        print(f"Class: {balanced_df_pd['Class'].value_counts()}")
+        #print(f"Anomalies: {balanced_df_pd['is_anomaly'].value_counts()}")
+        #print(f"Class: {balanced_df_pd['Class'].value_counts()}")
         self.isolation_forest_model = iso_forest
 
     def isolate_forest_detection(self, data: DataFrame) -> pd.DataFrame:
@@ -160,12 +170,12 @@ class FraudDetectionLib:
         Returns:
             anomalies (pandas.Series): 1 for anomaly, 0 otherwise
         """
-        proccesed_data = self.prepare_data(data)
+        proccesed_data = data # self.prepare_data(data)
         normalized_features_pd = proccesed_data.select("scaled_features").toPandas()
         normalized_features_np = np.array(normalized_features_pd["scaled_features"].tolist())
-        #model = IsolationForest(contamination=0.01, random_state=3345, n_estimators=100)
-        model = self.isolation_forest_model
-        #model.fit(normalized_features_np)
+        model = IsolationForest(contamination=0.01, random_state=3345, n_estimators=100)
+        #model = self.isolation_forest_model
+        model.fit(normalized_features_np)
         anomalies = model.predict(normalized_features_np)
         #anomalies = self.isolation_forest_model.predict(normalized_features_np)
         result_df = data.toPandas()

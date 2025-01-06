@@ -35,6 +35,7 @@ class InfluxDbClient:
             points.append(point)
         
         self._write_data_to_influxdb(points)
+        print("Data written to InfluxDB.")
 
 
     def _write_data_to_influxdb(self, points: list) -> None:
